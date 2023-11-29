@@ -7,6 +7,7 @@ import (
 	"diplom.com/cmd/gophermart/api/logger"
 	"diplom.com/cmd/gophermart/models"
 	_ "github.com/lib/pq"
+	"go.uber.org/zap"
 )
 
 type UserRepository struct {
@@ -18,15 +19,23 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 }
 
 func (ur *UserRepository) Create(user models.User) error {
-
 	log := logger.GetLogger()
 
-	_, err := ur.db.Exec("INSERT INTO users (password, email) VALUES ($1, $2)", user.Password, user.Email)
+	// Добавить обновление пароля, если он предоставлен
+	err := ur.UpdatePassword(user.Email, user.Password)
 	if err != nil {
-		log.Error("Ошибка при выполнении запроса INSERT")
+		log.Error("Ошибка при обновлении пароля", zap.Error(err))
+		// Обработка ошибки обновления пароля
+		return err
 	}
 
-	return err
+	_, err = ur.db.Exec("INSERT INTO users (password, email) VALUES ($1, $2)", user.Password, user.Email)
+	if err != nil {
+		log.Error("Ошибка при выполнении запроса INSERT")
+		return err
+	}
+
+	return nil
 }
 
 func (ur *UserRepository) CreateTableUsers() error {
@@ -64,13 +73,12 @@ func (ur *UserRepository) CreateTableOrders() error {
 
 // В UserRepository добавь этот метод
 func (ur *UserRepository) GetUserByEmail(email string) (*models.User, error) {
-	user := &models.User{}
+	println("email", email)
 
-	println("GetUserByEmail email", email)
+	user := &models.User{Email: email} // Инициализируем поле Email перед запросом к базе данных
 	row := ur.db.QueryRow("SELECT email, password FROM users WHERE email = $1", email)
 
 	err := row.Scan(&user.Email, &user.Password)
-	println("после row GetUserByEmail", user.Email, user.Password)
 	if err != nil {
 		// Если нет соответствующих строк, вернуть пустое значение и ошибку
 		if err == sql.ErrNoRows {
@@ -80,10 +88,26 @@ func (ur *UserRepository) GetUserByEmail(email string) (*models.User, error) {
 		return nil, err
 	}
 
-	// Вернуть nil, если user.Email равен nil (возможно, стоит добавить другие проверки на корректность данных)
+	// Вернуть nil, если user.Email равен пустой строке (возможно, стоит добавить другие проверки на корректность данных)
 	if user.Email == "" {
 		return nil, errors.New("user data is not valid")
 	}
 
 	return user, nil
+}
+
+func (ur *UserRepository) UpdatePassword(email, newPassword string) error {
+	log := logger.GetLogger()
+
+	if newPassword == "" {
+		// Новый пароль не предоставлен, ничего не меняем
+		return nil
+	}
+
+	_, err := ur.db.Exec("UPDATE users SET password = $1 WHERE email = $2", newPassword, email)
+	if err != nil {
+		log.Error("Ошибка при выполнении запроса UPDATE")
+	}
+
+	return err
 }

@@ -4,16 +4,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"io/ioutil"
+
 	"net/http"
 	"net/http/httptest"
-
 	"time"
 
 	"diplom.com/cmd/gophermart/api/logger"
 	"diplom.com/cmd/gophermart/api/repository/service"
 	"diplom.com/cmd/gophermart/models"
 	"github.com/go-chi/chi"
+
 	"go.uber.org/zap"
 )
 
@@ -27,26 +27,28 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 		log.Error("RegisterUserHandler Ошибка при разборе тела запроса", zap.Error(err))
 		return
 	}
+	defer r.Body.Close()
+	println("user", user.Email, user.Password)
 
-	// Проверить, не существует ли уже пользователь с таким же  email
-	existingUser, _ := mc.UserRepository.GetUserByEmail(user.Email)
+	userService := service.NewUserService(mc.UserRepository)
+	if err := userService.RegisterUser(user); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Error("Ошибка регистрации пользователя", zap.Error(err))
+		return
+	}
+
+	existingUser, err := mc.UserRepository.GetUserByEmail(user.Email)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Error("RegisterUserHandler Ошибка получения пользователя из базы данных", zap.Error(err))
+		return
+	}
 	if existingUser != nil {
-		// Пользователь с таким email уже существует
 		w.WriteHeader(http.StatusConflict)
 		log.Error("Пользователь с таким email уже зарегистрирован")
 		return
 	}
 
-	// Вызов метода сервиса для регистрации пользовател
-	userService := service.NewUserService(mc.UserRepository)
-
-	if err := userService.RegisterUser(user); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Error("Ошибка аутентификации: неверное имя пользователя или пароль", zap.Error(err))
-		return
-	}
-
-	// Создание нового запроса на аутентификацию с обновленными учетными данными
 	authRequest, err := http.NewRequest("POST", "/api/user/login", nil)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -54,7 +56,6 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Передача обновленных учетных данных в теле запроса
 	authRequestBody := map[string]string{
 		"email":    user.Email,
 		"password": user.Password,
@@ -67,18 +68,15 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authRequest.Body = ioutil.NopCloser(bytes.NewReader(authRequestBodyBytes))
+	authRequest.Body = io.NopCloser(bytes.NewReader(authRequestBodyBytes))
 	authRequest.Header.Set("Content-Type", "application/json")
 
-	// Выполнение запроса на аутентификацию
 	authResponseRecorder := httptest.NewRecorder()
 	mc.AuthenticateUserHandler(authResponseRecorder, authRequest)
 
 	w.WriteHeader(authResponseRecorder.Code)
 	w.Header().Set("Content-Type", authResponseRecorder.Header().Get("Content-Type"))
 	w.Write(authResponseRecorder.Body.Bytes())
-
-	// Вернуть успешный статус HTTP
 
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }

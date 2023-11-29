@@ -23,8 +23,8 @@ func InitConfig() *L_Config {
 	)
 
 	flag.StringVar(&runAddress, "a", "localhost:8080", "Адрес и порт запуска сервиса")
-	flag.StringVar(&databaseURI, "d", "postgres://postgres:qwert@localhost:5432/diplom?sslmode=disable", "Адрес подключения к базе данных")
-	flag.StringVar(&accrualSystemAddress, "r", "/tmp/metrics-db.json", "Адрес системы расчёта начислений")
+	flag.StringVar(&databaseURI, "d", "postgres://lew:qwert@localhost:5432/diplom?sslmode=disable", "Адрес подключения к базе данных")
+	flag.StringVar(&accrualSystemAddress, "r", "localhost:1488", "Адрес системы расчёта начислений")
 	flag.StringVar(&jwtSecretKey, "jwt", "Gazmaster358", "Секретный ключ JWT")
 
 	runAddressEnv := os.Getenv("RUN_ADDRESS")
