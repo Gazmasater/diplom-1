@@ -3,6 +3,9 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"log"
+
+	"diplom.com/cmd/gophermart/api/myerr"
 
 	"diplom.com/cmd/gophermart/api/logger"
 	"diplom.com/cmd/gophermart/models"
@@ -21,18 +24,29 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 func (ur *UserRepository) Create(user models.User) error {
 	log := logger.GetLogger()
 
-	// Добавить обновление пароля, если он предоставлен
-	err := ur.UpdatePassword(user.Email, user.Password)
+	// Проверяем, существует ли пользователь с указанным email
+	existingUser, err := ur.GetUserByEmail(user.Email, user.Password)
+	if err != nil {
+		log.Error("Такого пользователя нет, идем дальше", zap.Error(err))
+
+	}
+
+	// Если пользователь уже существует, возвращаем ошибку о том, что пользователь уже зарегистрирован
+	if existingUser != nil {
+		return myerr.ErrUserAlreadyExists
+	}
+
+	// Обновляем пароль пользователя
+	err = ur.UpdatePassword(user.Email, user.Password)
 	if err != nil {
 		log.Error("Ошибка при обновлении пароля", zap.Error(err))
-		// Обработка ошибки обновления пароля
 		return err
 	}
 
+	// Добавляем нового пользователя в базу данных
 	_, err = ur.db.Exec("INSERT INTO users (password, email) VALUES ($1, $2)", user.Password, user.Email)
 	if err != nil {
-		log.Error("Ошибка при выполнении запроса INSERT")
-		return err
+		return myerr.ErrInsertFailed
 	}
 
 	return nil
@@ -60,7 +74,7 @@ func (ur *UserRepository) CreateTableOrders() error {
         order_number TEXT NOT NULL, -- Номер заказа, обязательное поле
         status TEXT NOT NULL, -- Статус заказа, обязательное поле
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- Время создания заказа
-        amount DECIMAL(10, 2) DEFAULT 0, -- Сумма заказа (по умолчанию 0)
+        accrual DECIMAL(10, 2) DEFAULT 0, -- Сумма начисления (по умолчанию 0)
         deduction DECIMAL(10, 2) DEFAULT 0, -- Сумма списания (по умолчанию 0)
         deduction_time TIMESTAMPTZ, -- Время списания
         CONSTRAINT valid_status CHECK (status IN ('NEW', 'PROCESSING', 'INVALID', 'PROCESSED')) -- Проверка статуса заказа
@@ -72,23 +86,26 @@ func (ur *UserRepository) CreateTableOrders() error {
 }
 
 // В UserRepository добавь этот метод
-func (ur *UserRepository) GetUserByEmail(email string) (*models.User, error) {
-	println("email", email)
 
-	user := &models.User{Email: email} // Инициализируем поле Email перед запросом к базе данных
+func (ur *UserRepository) GetUserByEmail(email string, password string) (*models.User, error) {
+	user := &models.User{
+		Email:    email,
+		Password: password,
+	}
+
 	row := ur.db.QueryRow("SELECT email, password FROM users WHERE email = $1", email)
 
 	err := row.Scan(&user.Email, &user.Password)
 	if err != nil {
-		// Если нет соответствующих строк, вернуть пустое значение и ошибку
 		if err == sql.ErrNoRows {
+			// Пользователь не найден - записываем сообщение в лог
+			log.Println("Пользователь не найден для email:", email)
 			return nil, errors.New("user not found")
 		}
 		// Вернуть любую другую ошибку
 		return nil, err
 	}
 
-	// Вернуть nil, если user.Email равен пустой строке (возможно, стоит добавить другие проверки на корректность данных)
 	if user.Email == "" {
 		return nil, errors.New("user data is not valid")
 	}

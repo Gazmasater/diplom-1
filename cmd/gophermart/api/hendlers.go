@@ -3,15 +3,21 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"regexp"
+	"strings"
 
 	"net/http"
 	"net/http/httptest"
 	"time"
 
 	"diplom.com/cmd/gophermart/api/logger"
+	"diplom.com/cmd/gophermart/api/myerr"
 	"diplom.com/cmd/gophermart/api/repository/service"
 	"diplom.com/cmd/gophermart/models"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/go-chi/chi"
 
 	"go.uber.org/zap"
@@ -32,12 +38,18 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	userService := service.NewUserService(mc.UserRepository)
 	if err := userService.RegisterUser(user); err != nil {
+		if errors.Is(err, myerr.ErrUserAlreadyExists) {
+			w.WriteHeader(http.StatusConflict)
+			fmt.Fprintf(w, "Пользователь с таким email уже зарегистрирован\n ")
+			return
+		}
+
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Error("Ошибка регистрации пользователя", zap.Error(err))
 		return
 	}
 
-	existingUser, err := mc.UserRepository.GetUserByEmail(user.Email)
+	existingUser, err := mc.UserRepository.GetUserByEmail(user.Email, user.Password)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Error("RegisterUserHandler Ошибка получения пользователя из базы данных", zap.Error(err))
@@ -45,7 +57,7 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if existingUser != nil {
 		w.WriteHeader(http.StatusConflict)
-		log.Error("Пользователь с таким email уже зарегистрирован")
+		log.Error("RegisterUserHandler Пользователь с таким email уже зарегистрирован\n")
 		return
 	}
 
@@ -130,6 +142,36 @@ func (mc *App) AuthenticateUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (mc *App) LoadOrders(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "Missing authorization header\n")
+		return
+	}
+
+	bearerToken := strings.Split(authHeader, " ")
+	if len(bearerToken) != 2 || bearerToken[0] != "Bearer" {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "Invalid token format")
+		return
+	}
+
+	tokenString := bearerToken[1]
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte("Gazmaster358"), nil // Замените на ваш секретный ключ
+	})
+
+	if err != nil || !token.Valid {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "Invalid token")
+		return
+	}
+
+	claims, _ := token.Claims.(jwt.MapClaims)
+	userID, _ := claims["user_id"].(string)
+	println("LoadOrders userID", userID)
+
 	body := make([]byte, 1<<20) // Ограничение размера тела запроса до 1 МБ
 	n, err := io.ReadFull(r.Body, body)
 	if err != nil && err != io.ErrUnexpectedEOF {
@@ -138,12 +180,17 @@ func (mc *App) LoadOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	orderNumber := string(body[:n]) // Преобразование тела запроса в строку с номером заказа
+	orderNumber := extractOrderNumberFromString(string(body[:n])) // Извлечение номера заказа из тела запроса
+
+	if orderNumber == "" {
+		http.Error(w, "Номер заказа не найден в теле запроса", http.StatusBadRequest)
+		return
+	}
 
 	isValid := luhnCheck(orderNumber)
 	if isValid {
 		// Если номер валиден, сохраняем в базу данных
-		err := mc.SaveOrderNumber(mc.DB, orderNumber)
+		err := mc.SaveOrderNumber(orderNumber)
 		if err != nil {
 			http.Error(w, "Ошибка сохранения номера заказа", http.StatusInternalServerError)
 			return
@@ -155,6 +202,17 @@ func (mc *App) LoadOrders(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Номер заказа не прошел проверку по методу Луна"))
 	}
+}
+
+func extractOrderNumberFromString(input string) string {
+	regexPattern := `\"order\":\s*\"(\d+)\"`
+	re := regexp.MustCompile(regexPattern)
+	matches := re.FindStringSubmatch(input)
+	if len(matches) != 2 {
+		return "" // Возвращаем пустую строку в случае отсутствия совпадения
+	}
+
+	return matches[1] // Возвращаем найденный номер заказа
 }
 
 // Функция для проверки номера по алгоритму Луна
@@ -186,10 +244,11 @@ func (mc *App) Route() *chi.Mux {
 
 	r := chi.NewRouter()
 
-	r.With(mc.Authenticate).Post("/api/user/orders", mc.LoadOrders) // Подключение middleware для проверки аутентификации к маршруту /api/user/orders
+	//r.With(mc.AuthMiddleware).Post("/api/user/orders", mc.LoadOrders) // Подключение middleware для проверки аутентификации к маршруту /api/user/orders
 
 	r.Post("/api/user/register", mc.RegisterUserHandler)
 	r.Post("/api/user/login", mc.AuthenticateUserHandler)
+	r.Post("/api/user/orders", mc.LoadOrders)
 
 	return r
 }

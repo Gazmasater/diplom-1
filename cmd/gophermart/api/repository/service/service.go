@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"diplom.com/cmd/gophermart/api/logger"
+	"diplom.com/cmd/gophermart/api/myerr"
 	"diplom.com/cmd/gophermart/api/repository"
 	"diplom.com/cmd/gophermart/models"
 	"github.com/dgrijalva/jwt-go"
@@ -37,9 +38,20 @@ func (us *UserService) RegisterUser(user models.User) error {
 		return err
 	}
 
-	// Создание пользователя
 	if err := us.userRepository.Create(user); err != nil {
-		log.Error("Ошибка при выполнении запроса INSERT для пользователя", zap.Error(err))
+		if errors.Is(err, myerr.ErrUserAlreadyExists) {
+			// Обработка ошибки "Пользователь уже зарегистрирован"
+			log.Error("RegisterUser Пользователь с таким email уже зарегистрирован\n", zap.Error(err))
+
+		} else if errors.Is(err, myerr.ErrInsertFailed) {
+			// Обработка ошибки "Ошибка при выполнении запроса INSERT"
+			log.Error("Ошибка при выполнении запроса INSERT для пользователя", zap.Error(err))
+
+		} else {
+			// Обработка других ошибок
+			log.Error("Необработанная ошибка при создании пользователя", zap.Error(err))
+
+		}
 		return err
 	}
 
@@ -50,7 +62,7 @@ func (us *UserService) AuthenticateUser(userRepository *repository.UserRepositor
 	log := logger.GetLogger()
 
 	// Получение пользователя по логину
-	user, err := us.userRepository.GetUserByEmail(login)
+	user, err := us.userRepository.GetUserByEmail(login, password)
 	if err != nil {
 		log.Error("Ошибка при получении пользователя", zap.Error(err))
 		return "", err
