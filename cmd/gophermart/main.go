@@ -58,96 +58,96 @@ func main() {
 		// Обработка ошибки создания таблицы пользователей
 	}
 
+	if err := app.UserRepository.CreateTableTokens(); err != nil {
+		logger.Error("Ошибка создания таблицы пользователей", zap.Error(err))
+		// Обработка ошибки создания таблицы пользователей
+	}
+
 	router := app.Route()
-
-	// go func() {
-	// 	for {
-	// 		// Проверяем базу данных на наличие заказов со статусом NEW
-	// 		var orderNumber string
-	// 		err := db.QueryRow("SELECT order_number FROM orders WHERE status = 'NEW' LIMIT 1").Scan(&orderNumber)
-	// 		if err != nil {
-	// 			log.Println("Ошибка при проверке статуса заказа:", err)
-	// 			// Обработка ошибки проверки статуса заказа
-	// 			time.Sleep(5 * time.Second) // Пауза перед следующей попыткой
-	// 			continue
-	// 		}
-
-	// 		// Если есть заказ со статусом NEW, выполняем POST-запрос
-	// 		if orderNumber != "" {
-	// 			// Создаем JSON-данные для запроса
-	// 			jsonData := `{"order": "` + orderNumber + `"}`
-
-	// 			// Выполняем POST-запрос
-	// 			resp, err := http.Post("http://localhost:8081/api/orders", "application/json", bytes.NewBuffer([]byte(jsonData)))
-	// 			if err != nil {
-	// 				log.Println("Ошибка при выполнении POST-запроса:", err)
-	// 				// Обработка ошибки POST-запроса
-	// 			} else {
-
-	// 				// Проверяем статус ответа
-	// 				if resp.StatusCode != http.StatusOK {
-	// 					log.Println("Ошибка: получен некорректный статус ответа:", resp.StatusCode)
-	// 					// Обработка ошибки некорректного статуса ответа
-	// 				} else {
-	// 					log.Println("Выполнен POST-запрос для заказа:", orderNumber)
-	// 				}
-	// 			}
-
-	// 			// Помечаем заказ как обработанный, например, обновляем статус
-	// 			_, err = db.Exec("UPDATE orders SET status = 'PROCESSED' WHERE order_number = $1", orderNumber)
-	// 			if err != nil {
-	// 				log.Println("Ошибка при обновлении статуса заказа:", err)
-	// 				// Обработка ошибки обновления статуса заказа
-	// 			}
-	// 		}
-
-	// 		// Пауза перед следующей проверкой
-	// 		time.Sleep(5 * time.Second)
-	// 	}
-	// }()
-
-	go func() {
-
-		if err := http.ListenAndServe(":8080", router); err != nil {
-			// Если сервер не запущен
-			logger.Error("Ошибка запуска сервера", zap.Error(err))
-		}
-
-	}()
 
 	go func() {
 		defer wg.Done()
-		orderNumber := fmt.Sprintf("%d", 12345678903) // преобразование числа в строку
 
-		// Создание JSON-структуры
-		jsonData := map[string]string{"order": orderNumber}
-		jsonValue, _ := json.Marshal(jsonData)
-
-		req, err := http.NewRequest("POST", "http://localhost:8080/api/user/orders", bytes.NewBuffer(jsonValue))
-		if err != nil {
-			fmt.Println("Ошибка при создании запроса:", err)
-			return
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			err := updateOrdersTable(db)
+			if err != nil {
+				logger.Error("Ошибка при обновлении таблицы orders", zap.Error(err))
+			}
 		}
-
-		req.Header.Set("Authorization", "Bearer Gazmaster358")
-		req.Header.Set("Content-Type", "application/json")
-
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Println("Ошибка при выполнении запроса:", err)
-			return
-		}
-		defer resp.Body.Close()
-
-		fmt.Println("Ответ:", resp.Status)
 	}()
 
-	// Логирование успешного запуска сервера
+	go func() {
+		if err := http.ListenAndServe(":8080", router); err != nil {
+			logger.Error("Ошибка запуска сервера", zap.Error(err))
+		}
+	}()
+
 	logger.Info("Сервер успешно запущен на порту 8080")
-
-	time.Sleep(10 * time.Second)
-
-	// Для того чтобы приложение не завершалось сразу
 	select {}
+
+}
+
+func sendPostRequest(orderNumber string) (string, error) {
+	url := "http://localhost:8081/api/orders"
+	requestBody := []byte(fmt.Sprintf(`{"order": "%s"}`, orderNumber))
+
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusAccepted {
+		return "", fmt.Errorf("неверный статус от сервера: %d", resp.StatusCode)
+	}
+
+	return orderNumber, nil
+}
+
+func updateOrdersTable(db *sql.DB) error {
+	// Получение номера заказа из базы данных
+	var orderNumber string
+	err := db.QueryRow("SELECT order_number FROM orders WHERE status = 'NEW'").Scan(&orderNumber)
+	if err != nil {
+		return err
+	}
+
+	orderNumber, err = sendPostRequest(orderNumber)
+	if err != nil {
+		return err
+	}
+
+	// Формирование GET запроса для получения статуса
+	url := fmt.Sprintf("http://localhost:8081/api/orders/%s", orderNumber)
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("неверный статус от сервера: %d", resp.StatusCode)
+	}
+
+	// Декодирование ответа и получение статуса и accrual
+	var responseBody struct {
+		Status  string `json:"status"`
+		Accrual int    `json:"accrual"` // или другой тип данных accrual
+		// Добавьте другие поля, если они есть в ответе
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&responseBody)
+	if err != nil {
+		return err
+	}
+
+	// Обновление базы данных на основе полученных данных
+	_, err = db.Exec("UPDATE orders SET status = $1, accrual = $2 WHERE order_number = $3", responseBody.Status, responseBody.Accrual, orderNumber)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

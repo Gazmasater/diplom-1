@@ -36,6 +36,14 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	println("user", user.Email, user.Password)
 
+	existingUser, _ := mc.UserRepository.GetUserByEmail(user.Email, user.Password)
+
+	if existingUser != nil {
+		w.WriteHeader(http.StatusConflict)
+		log.Error("RegisterUserHandler Пользователь с таким email уже зарегистрирован\n")
+		return
+	}
+
 	userService := service.NewUserService(mc.UserRepository)
 	if err := userService.RegisterUser(user); err != nil {
 		if errors.Is(err, myerr.ErrUserAlreadyExists) {
@@ -46,18 +54,6 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Error("Ошибка регистрации пользователя", zap.Error(err))
-		return
-	}
-
-	existingUser, err := mc.UserRepository.GetUserByEmail(user.Email, user.Password)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Error("RegisterUserHandler Ошибка получения пользователя из базы данных", zap.Error(err))
-		return
-	}
-	if existingUser != nil {
-		w.WriteHeader(http.StatusConflict)
-		log.Error("RegisterUserHandler Пользователь с таким email уже зарегистрирован\n")
 		return
 	}
 

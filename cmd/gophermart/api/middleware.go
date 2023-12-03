@@ -8,7 +8,7 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
-func (mc *App) AuthMiddleware(next http.Handler) http.Handler {
+func Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -26,9 +26,8 @@ func (mc *App) AuthMiddleware(next http.Handler) http.Handler {
 
 		tokenString := bearerToken[1]
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-
-			return []byte("Gofermart"), nil
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
+			return []byte("Gazmaster358"), nil
 		})
 
 		if err != nil || !token.Valid {
@@ -37,7 +36,7 @@ func (mc *App) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Продолжаем выполнение запроса, если токен валиден
+		// Если токен верный, продолжаем выполнение запроса
 		next.ServeHTTP(w, r)
 	})
 }

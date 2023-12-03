@@ -18,9 +18,12 @@ type UserService struct {
 	userRepository *repository.UserRepository
 }
 
+// Конструктор для UserService, принимающий userRepository в качестве аргумента
 func NewUserService(userRepository *repository.UserRepository) *UserService {
-	println("NewUserService")
-	return &UserService{userRepository}
+	return &UserService{
+		userRepository: userRepository,
+		// инициализация других полей, если есть
+	}
 }
 
 func (us *UserService) RegisterUser(user models.User) error {
@@ -62,7 +65,7 @@ func (us *UserService) AuthenticateUser(userRepository *repository.UserRepositor
 	log := logger.GetLogger()
 
 	// Получение пользователя по логину
-	user, err := us.userRepository.GetUserByEmail(login, password)
+	user, err := userRepository.GetUserByEmail(login, password)
 	if err != nil {
 		log.Error("Ошибка при получении пользователя", zap.Error(err))
 		return "", err
@@ -80,10 +83,17 @@ func (us *UserService) AuthenticateUser(userRepository *repository.UserRepositor
 	claims["exp"] = time.Now().Add(time.Hour * 24).Unix() // Пример: токен действителен 24 часа
 
 	// Подпись токена с использованием секретного ключа из переменной окружения
-	secretKey := []byte(os.Getenv("JWT_SECRET_KEY")) // Используйте переменную окружения для хранения секретного ключа
+	secretKey := []byte(os.Getenv("Gazmaster358")) // Используйте переменную окружения для хранения секретного ключа
 	signedToken, err := token.SignedString(secretKey)
 	if err != nil {
 		log.Error("Ошибка при подписи токена аутентификации", zap.Error(err))
+		return "", err
+	}
+
+	// Сохранение токена в базе данных
+	err = userRepository.InsertToken(user.Email, signedToken)
+	if err != nil {
+		log.Error("Ошибка при сохранении токена в базе данных", zap.Error(err))
 		return "", err
 	}
 
