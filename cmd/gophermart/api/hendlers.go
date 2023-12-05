@@ -240,8 +240,6 @@ func (mc *App) Route() *chi.Mux {
 
 	r := chi.NewRouter()
 
-	//r.With(mc.AuthMiddleware).Post("/api/user/orders", mc.LoadOrders) // Подключение middleware для проверки аутентификации к маршруту /api/user/orders
-
 	r.Post("/api/user/register", mc.RegisterUserHandler)
 	r.Post("/api/user/login", mc.AuthenticateUserHandler)
 	r.Post("/api/user/orders", mc.LoadOrders)
@@ -274,6 +272,80 @@ func (mc *App) Authenticate(next http.Handler) http.Handler {
 		}
 
 		// Если аутентификация прошла успешно, продолжаем выполнение следующего обработчика
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (mc *App) GetUserOrdersHandler(w http.ResponseWriter, r *http.Request) {
+	userEmail := r.URL.Query().Get("user_email")
+	if userEmail == "" {
+		http.Error(w, "Не указан адрес электронной почты", http.StatusBadRequest)
+		return
+	}
+
+	query := `
+    SELECT id, order_number, status, created_at, accrual, deduction, deduction_time
+    FROM orders
+    WHERE user_email = $1
+`
+
+	rows, err := mc.DB.Query(query, userEmail)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var orders []models.Order
+	for rows.Next() {
+		var order models.Order
+		err := rows.Scan(&order.ID, &order.OrderNumber, &order.Status, &order.CreatedAt, &order.Accrual, &order.Deduction, &order.DeductionTime)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		orders = append(orders, order)
+	}
+	println("ORDER", orders)
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(orders); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+}
+
+func (mc *App) TokenAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userEmail := r.URL.Query().Get("user_email")
+		if userEmail == "" {
+			http.Error(w, "Не указан адрес электронной почты", http.StatusBadRequest)
+			return
+		}
+
+		// Получаем токен из базы данных для указанного email
+		var token models.Token
+		err := mc.DB.QueryRow("SELECT id, user_id, token, expiration FROM tokens WHERE user_email = $1", userEmail).Scan(
+			&token.ID, &token.UserEmail, &token.Token, &token.CreatedAt,
+		)
+		if err != nil {
+			http.Error(w, "Токен не найден или истек", http.StatusUnauthorized)
+			return
+		}
+
+		// Проверяем, не истёк ли токен
+		if token.CreatedAt.Before(time.Now()) {
+			http.Error(w, "Токен истёк", http.StatusUnauthorized)
+			return
+		}
+
+		// Если токен валиден, передаем управление следующему обработчику
 		next.ServeHTTP(w, r)
 	})
 }
