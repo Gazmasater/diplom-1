@@ -19,7 +19,6 @@ import (
 	"diplom.com/cmd/gophermart/api/repository/service"
 	"diplom.com/cmd/gophermart/models"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/go-chi/chi"
 
 	"go.uber.org/zap"
 )
@@ -31,16 +30,18 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&user); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Ошибка при разборе тела запроса: %s\n", err.Error())
 		log.Error("RegisterUserHandler Ошибка при разборе тела запроса", zap.Error(err))
 		return
 	}
 	defer r.Body.Close()
-	println("user", user.Email, user.Password)
+	println("user", user.Email, user.Password) // Используем user.Email и user.Password
 
 	existingUser, _ := mc.UserRepository.GetUserByEmail(user.Email, user.Password)
 
 	if existingUser != nil {
 		w.WriteHeader(http.StatusConflict)
+		fmt.Fprintf(w, "Пользователь с таким email уже зарегистрирован\n")
 		log.Error("RegisterUserHandler Пользователь с таким email уже зарегистрирован\n")
 		return
 	}
@@ -49,11 +50,13 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	if err := userService.RegisterUser(user); err != nil {
 		if errors.Is(err, myerr.ErrUserAlreadyExists) {
 			w.WriteHeader(http.StatusConflict)
-			fmt.Fprintf(w, "Пользователь с таким email уже зарегистрирован\n ")
+			fmt.Fprintf(w, "Пользователь с таким email уже зарегистрирован\n")
+			log.Error("RegisterUserHandler Пользователь с таким email уже зарегистрирован\n")
 			return
 		}
 
 		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Ошибка регистрации пользователя: %s\n", err.Error())
 		log.Error("Ошибка регистрации пользователя", zap.Error(err))
 		return
 	}
@@ -66,7 +69,7 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authRequestBody := map[string]string{
-		"email":    user.Email,
+		"login":    user.Email,
 		"password": user.Password,
 	}
 
@@ -83,8 +86,16 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	authResponseRecorder := httptest.NewRecorder()
 	mc.AuthenticateUserHandler(authResponseRecorder, authRequest)
 
-	w.WriteHeader(authResponseRecorder.Code)
-	w.Header().Set("Content-Type", authResponseRecorder.Header().Get("Content-Type"))
+	if authResponseRecorder.Code != http.StatusOK {
+		// Ошибка аутентификации
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Ошибка аутентификации: код ответа %d\n", authResponseRecorder.Code)
+		log.Error("Ошибка аутентификации", zap.Int("statusCode", authResponseRecorder.Code))
+		return
+	}
+
+	// Успешная аутентификация
+	w.WriteHeader(http.StatusOK)
 	w.Write(authResponseRecorder.Body.Bytes())
 
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
@@ -237,60 +248,7 @@ func luhnCheck(number string) bool {
 	return sum%10 == 0
 }
 
-func (mc *App) Route() *chi.Mux {
-	r := chi.NewRouter()
-
-	// Middleware для аутентификации пользователя
-	authMiddleware := mc.TokenAuth // TokenAuth - middleware
-
-	// Маршруты, требующие аутентификации через токен
-	r.Route("/api/user", func(r chi.Router) {
-		r.Group(func(r chi.Router) {
-			r.Use(authMiddleware)
-
-			// POST запрос для создания заказа
-			r.Post("/orders", mc.LoadOrders)
-
-			// GET запрос для получения заказов
-			r.Get("/orders", mc.GetUserOrdersHandler)
-		})
-	})
-
-	// Маршруты без аутентификации
-	r.Post("/api/user/register", mc.RegisterUserHandler)
-	r.Post("/api/user/login", mc.AuthenticateUserHandler)
-
-	return r
-}
-
 // Middleware для проверки аутентификации пользователя
-func (mc *App) Authenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Получаем данные из тела запроса
-		var user models.User
-		decoder := json.NewDecoder(r.Body)
-		if err := decoder.Decode(&user); err != nil {
-			http.Error(w, "Ошибка при чтении данных пользователя", http.StatusBadRequest)
-			return
-		}
-		defer r.Body.Close()
-
-		// Предполагая, что login и password приходят в структуре User
-		authenticated, err := mc.UserService.AuthenticateUser(mc.UserRepository, user.Email, user.Password)
-		if err != nil {
-			http.Error(w, "Ошибка при проверке аутентификации", http.StatusInternalServerError)
-			return
-		}
-
-		if authenticated != "" {
-			http.Error(w, "Неавторизованный доступ", http.StatusUnauthorized)
-			return
-		}
-
-		// Если аутентификация прошла успешно, продолжаем выполнение следующего обработчика
-		next.ServeHTTP(w, r)
-	})
-}
 
 func (mc *App) GetUserOrdersHandler(w http.ResponseWriter, r *http.Request) {
 	// Создаем экземпляр UserRepository с помощью конструктора NewUserRepository
@@ -319,39 +277,4 @@ func (mc *App) GetUserOrdersHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-}
-
-func (mc *App) TokenAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userEmail := r.URL.Query().Get("user_email")
-		fmt.Println("Получен адрес электронной почты:", userEmail) // Отладочный принт
-
-		if userEmail == "" {
-			http.Error(w, "TokenAuth: Не указан адрес электронной почты", http.StatusBadRequest)
-			return
-		}
-
-		// Получаем токен из базы данных для указанного email
-		var token models.Token
-		query := "SELECT id, user_email, token, created_at, expiration_time FROM tokens WHERE user_email = $1"
-
-		err := mc.DB.QueryRow(query, userEmail).Scan(
-			&token.ID, &token.UserEmail, &token.Token, &token.CreatedAt, &token.ExpirationTime,
-		)
-		if err != nil {
-
-			http.Error(w, "TokenAuth: Токен не найден или истек", http.StatusUnauthorized)
-			return
-		}
-
-		// Сравниваем время истечения с текущим временем
-		if token.ExpirationTime.Before(time.Now()) {
-
-			http.Error(w, "TokenAuth: Токен истёк", http.StatusUnauthorized)
-			return
-		}
-
-		// Если токен валиден, передаем управление следующему обработчику
-		next.ServeHTTP(w, r)
-	})
 }
