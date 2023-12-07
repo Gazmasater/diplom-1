@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 type User struct {
 	Email     string `json:"email"`
@@ -9,13 +12,14 @@ type User struct {
 }
 
 type Order struct {
-	ID            int       `json:"id"`
-	OrderNumber   string    `json:"order_number"`
-	Status        string    `json:"status"`
-	CreatedAt     time.Time `json:"created_at"`
-	Accrual       float64   `json:"accrual"`
-	Deduction     float64   `json:"deduction"`
-	DeductionTime time.Time `json:"deduction_time"`
+	ID            int          `json:"id"`
+	OrderNumber   string       `json:"order_number"`
+	Status        string       `json:"status"`
+	CreatedAt     time.Time    `json:"created_at"`
+	Accrual       float64      `json:"accrual"`
+	Deduction     float64      `json:"deduction"`
+	DeductionTime sql.NullTime `json:"deduction_time"`
+	UserEmail     string       `json:"user_email"`
 }
 
 type Token struct {

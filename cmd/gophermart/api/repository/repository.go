@@ -19,7 +19,7 @@ type UserRepository struct {
 }
 
 func NewUserRepository(db *sql.DB) *UserRepository {
-	return &UserRepository{db}
+	return &UserRepository{db: db}
 }
 
 func (ur *UserRepository) Create(user models.User) error {
@@ -159,4 +159,48 @@ func (ur *UserRepository) InsertToken(userEmail string, token string, expiration
 
 	_, err := ur.db.Exec(query, userEmail, token, expirationTime)
 	return err
+}
+
+func (ur *UserRepository) GetOrdersWithUserEmail(userEmail string) ([]struct {
+	OrderNumber string `json:"order_number"`
+	UserEmail   string `json:"user_email"`
+}, error) {
+	query := `
+        SELECT order_number, user_email
+        FROM orders
+        WHERE user_email = $1
+    `
+
+	rows, err := ur.db.Query(query, userEmail)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []struct {
+		OrderNumber string `json:"order_number"`
+		UserEmail   string `json:"user_email"`
+	}
+	for rows.Next() {
+		var order struct {
+			OrderNumber string
+			UserEmail   string
+		}
+		if err := rows.Scan(&order.OrderNumber, &order.UserEmail); err != nil {
+			return nil, err
+		}
+		orders = append(orders, struct {
+			OrderNumber string `json:"order_number"`
+			UserEmail   string `json:"user_email"`
+		}{
+			OrderNumber: order.OrderNumber,
+			UserEmail:   order.UserEmail,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return orders, nil
 }

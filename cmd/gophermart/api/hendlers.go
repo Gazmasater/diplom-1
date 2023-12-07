@@ -15,6 +15,7 @@ import (
 
 	"diplom.com/cmd/gophermart/api/logger"
 	"diplom.com/cmd/gophermart/api/myerr"
+	"diplom.com/cmd/gophermart/api/repository"
 	"diplom.com/cmd/gophermart/api/repository/service"
 	"diplom.com/cmd/gophermart/models"
 	"github.com/dgrijalva/jwt-go"
@@ -186,7 +187,7 @@ func (mc *App) LoadOrders(w http.ResponseWriter, r *http.Request) {
 	isValid := luhnCheck(orderNumber)
 	if isValid {
 		// Если номер валиден, сохраняем в базу данных
-		err := mc.SaveOrderNumber(orderNumber)
+		err := mc.SaveOrderNumber(orderNumber, userID)
 		if err != nil {
 			http.Error(w, "Ошибка сохранения номера заказа", http.StatusInternalServerError)
 			return
@@ -292,46 +293,23 @@ func (mc *App) Authenticate(next http.Handler) http.Handler {
 }
 
 func (mc *App) GetUserOrdersHandler(w http.ResponseWriter, r *http.Request) {
+	// Создаем экземпляр UserRepository с помощью конструктора NewUserRepository
+	userRepo := repository.NewUserRepository(mc.DB)
+
 	userEmail := r.URL.Query().Get("user_email")
 	if userEmail == "" {
 		http.Error(w, "Не указан адрес электронной почты", http.StatusBadRequest)
 		return
 	}
 
-	query := `
-    SELECT id, order_number, status, created_at, accrual, deduction, deduction_time
-    FROM orders
-    WHERE user_email = $1
-    `
-
-	rows, err := mc.DB.Query(query, userEmail)
+	orders, err := userRepo.GetOrdersWithUserEmail(userEmail) // Передаем userEmail в функцию GetOrdersWithUserEmail
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var orders []models.Order
-	for rows.Next() {
-		var order models.Order
-		if err := rows.Scan(&order.ID, &order.OrderNumber, &order.Status, &order.CreatedAt, &order.Accrual, &order.Deduction, &order.DeductionTime); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		orders = append(orders, order)
-
-		// Вывод номера заказа
-		fmt.Println("Номер заказа:", order.OrderNumber)
-	}
-
-	if err := rows.Err(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if len(orders) == 0 {
-		fmt.Println("У пользователя нет заказов")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("[]"))
 		return

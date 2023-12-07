@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (app *App) SaveOrderNumber(orderNumber string) error {
+func (app *App) SaveOrderNumber(orderNumber, userEmail string) error {
 	log := logger.GetLogger()
 
 	// Проверка на уникальность номера заказа перед вставкой
@@ -22,10 +22,10 @@ func (app *App) SaveOrderNumber(orderNumber string) error {
 		return myerr.ErrOrderNumberNotUnique // Возвращаем созданную ошибку
 	}
 
-	// Запрос на вставку номера заказа в базу данных
-	query := "INSERT INTO orders (order_number, status, created_at) VALUES ($1, 'NEW', $2)"
-	createdAt := time.Now().Format(time.RFC3339) // Форматируем текущее время в формат RFC3339
-	_, err = app.DB.Exec(query, orderNumber, createdAt)
+	// Запрос на вставку номера заказа и адреса электронной почты в базу данных
+	query := "INSERT INTO orders (order_number, user_email, status, created_at) VALUES ($1, $2, 'NEW', $3)"
+	createdAt := time.Now() // Используем текущее время
+	_, err = app.DB.Exec(query, orderNumber, userEmail, createdAt)
 	if err != nil {
 		log.Error("Ошибка при сохранении номера заказа в базе данных", zap.Error(err))
 		return err
