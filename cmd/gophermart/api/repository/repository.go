@@ -89,32 +89,17 @@ func (ur *UserRepository) CreateTableOrders() error {
 
 func (ur *UserRepository) CreateTableTokens() error {
 	query := `
-    CREATE TABLE IF NOT EXISTS tokens (
-        id SERIAL PRIMARY KEY, -- Идентификатор токена
-        user_email TEXT REFERENCES users(user_email), -- Ссылка на пользователя
-        token TEXT NOT NULL, -- Токен, обязательное поле
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP -- Время создания токена
-    );
+        CREATE TABLE IF NOT EXISTS tokens (
+            id SERIAL PRIMARY KEY,
+            user_email TEXT REFERENCES users(user_email),
+            token TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            expiration_time TIMESTAMPTZ -- Добавляем столбец с временем истечения токена
+        );
     `
 
 	_, err := ur.db.Exec(query)
 	return err
-}
-
-func (ur *UserRepository) InsertToken(user_email string, token string) error {
-	query := `
-        INSERT INTO tokens (user_email, token)
-        VALUES ($1, $2)
-        RETURNING id;
-    `
-
-	var id int
-	err := ur.db.QueryRow(query, user_email, token).Scan(&id)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // В UserRepository добавь этот метод
@@ -163,5 +148,15 @@ func (ur *UserRepository) UpdatePassword(email, newPassword string) error {
 		log.Error("Ошибка при выполнении запроса UPDATE")
 	}
 
+	return err
+}
+
+func (ur *UserRepository) InsertToken(userEmail string, token string, expirationTime string) error {
+	query := `
+        INSERT INTO tokens (user_email, token, expiration_time)
+        VALUES ($1, $2, $3)
+    `
+
+	_, err := ur.db.Exec(query, userEmail, token, expirationTime)
 	return err
 }

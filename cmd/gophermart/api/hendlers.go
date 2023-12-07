@@ -237,12 +237,27 @@ func luhnCheck(number string) bool {
 }
 
 func (mc *App) Route() *chi.Mux {
-
 	r := chi.NewRouter()
 
+	// Middleware для аутентификации пользователя
+	authMiddleware := mc.TokenAuth // TokenAuth - middleware
+
+	// Маршруты, требующие аутентификации через токен
+	r.Route("/api/user", func(r chi.Router) {
+		r.Group(func(r chi.Router) {
+			r.Use(authMiddleware)
+
+			// POST запрос для создания заказа
+			r.Post("/orders", mc.LoadOrders)
+
+			// GET запрос для получения заказов
+			r.Get("/orders", mc.GetUserOrdersHandler)
+		})
+	})
+
+	// Маршруты без аутентификации
 	r.Post("/api/user/register", mc.RegisterUserHandler)
 	r.Post("/api/user/login", mc.AuthenticateUserHandler)
-	r.Post("/api/user/orders", mc.LoadOrders)
 
 	return r
 }
@@ -287,7 +302,7 @@ func (mc *App) GetUserOrdersHandler(w http.ResponseWriter, r *http.Request) {
     SELECT id, order_number, status, created_at, accrual, deduction, deduction_time
     FROM orders
     WHERE user_email = $1
-`
+    `
 
 	rows, err := mc.DB.Query(query, userEmail)
 	if err != nil {
@@ -299,14 +314,15 @@ func (mc *App) GetUserOrdersHandler(w http.ResponseWriter, r *http.Request) {
 	var orders []models.Order
 	for rows.Next() {
 		var order models.Order
-		err := rows.Scan(&order.ID, &order.OrderNumber, &order.Status, &order.CreatedAt, &order.Accrual, &order.Deduction, &order.DeductionTime)
-		if err != nil {
+		if err := rows.Scan(&order.ID, &order.OrderNumber, &order.Status, &order.CreatedAt, &order.Accrual, &order.Deduction, &order.DeductionTime); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		orders = append(orders, order)
+
+		// Вывод номера заказа
+		fmt.Println("Номер заказа:", order.OrderNumber)
 	}
-	println("ORDER", orders)
 
 	if err := rows.Err(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -314,34 +330,46 @@ func (mc *App) GetUserOrdersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	if len(orders) == 0 {
+		fmt.Println("У пользователя нет заказов")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("[]"))
+		return
+	}
+
 	if err := json.NewEncoder(w).Encode(orders); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 }
 
 func (mc *App) TokenAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userEmail := r.URL.Query().Get("user_email")
+		fmt.Println("Получен адрес электронной почты:", userEmail) // Отладочный принт
+
 		if userEmail == "" {
-			http.Error(w, "Не указан адрес электронной почты", http.StatusBadRequest)
+			http.Error(w, "TokenAuth: Не указан адрес электронной почты", http.StatusBadRequest)
 			return
 		}
 
 		// Получаем токен из базы данных для указанного email
 		var token models.Token
-		err := mc.DB.QueryRow("SELECT id, user_id, token, expiration FROM tokens WHERE user_email = $1", userEmail).Scan(
-			&token.ID, &token.UserEmail, &token.Token, &token.CreatedAt,
+		query := "SELECT id, user_email, token, created_at, expiration_time FROM tokens WHERE user_email = $1"
+
+		err := mc.DB.QueryRow(query, userEmail).Scan(
+			&token.ID, &token.UserEmail, &token.Token, &token.CreatedAt, &token.ExpirationTime,
 		)
 		if err != nil {
-			http.Error(w, "Токен не найден или истек", http.StatusUnauthorized)
+
+			http.Error(w, "TokenAuth: Токен не найден или истек", http.StatusUnauthorized)
 			return
 		}
 
-		// Проверяем, не истёк ли токен
-		if token.CreatedAt.Before(time.Now()) {
-			http.Error(w, "Токен истёк", http.StatusUnauthorized)
+		// Сравниваем время истечения с текущим временем
+		if token.ExpirationTime.Before(time.Now()) {
+
+			http.Error(w, "TokenAuth: Токен истёк", http.StatusUnauthorized)
 			return
 		}
 

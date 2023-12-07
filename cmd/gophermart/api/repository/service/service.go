@@ -80,7 +80,8 @@ func (us *UserService) AuthenticateUser(userRepository *repository.UserRepositor
 	token := jwt.New(jwt.SigningMethodHS256)
 	claims := token.Claims.(jwt.MapClaims)
 	claims["user_id"] = user.Email
-	claims["exp"] = time.Now().Add(time.Hour * 24).Unix() // Пример: токен действителен 24 часа
+	expirationTime := time.Now().Add(10 * time.Hour)
+	claims["exp"] = expirationTime.Unix()
 
 	// Подпись токена с использованием секретного ключа из переменной окружения
 	secretKey := []byte(os.Getenv("Gazmaster358")) // Используйте переменную окружения для хранения секретного ключа
@@ -90,8 +91,11 @@ func (us *UserService) AuthenticateUser(userRepository *repository.UserRepositor
 		return "", err
 	}
 
-	// Сохранение токена в базе данных
-	err = userRepository.InsertToken(user.Email, signedToken)
+	// Форматирование времени в формате RFC3339 перед сохранением в базу данных
+	formattedTime := expirationTime.Format(time.RFC3339)
+
+	// Сохранение токена и времени истечения в базе данных
+	err = userRepository.InsertToken(user.Email, signedToken, formattedTime)
 	if err != nil {
 		log.Error("Ошибка при сохранении токена в базе данных", zap.Error(err))
 		return "", err

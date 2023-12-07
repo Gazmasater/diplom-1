@@ -19,8 +19,9 @@ type Order struct {
 }
 
 type Token struct {
-	ID        int       `json:"id"`
-	UserEmail string    `json:"user_email"`
-	Token     string    `json:"token"`
-	CreatedAt time.Time `json:"created_at"`
+	ID             int       `json:"id"`
+	UserEmail      string    `json:"user_email"`
+	Token          string    `json:"token"`
+	CreatedAt      time.Time `json:"created_at"`
+	ExpirationTime time.Time `json:"expiration_time"`
 }
