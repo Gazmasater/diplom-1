@@ -127,7 +127,7 @@ func (ur *UserRepository) GetUserByEmail(email string, password string) (*models
 	}
 
 	if user.Email == "" {
-		// Некорректные данные пользователя
+
 		log.Println("Некорректные данные пользователя")
 		return nil, errors.New("user data is not valid")
 	}
