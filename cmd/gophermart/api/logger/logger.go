@@ -19,7 +19,7 @@ func InitLogger() (*zap.Logger, error) {
 		logError.Errorf("Ошибка инициализации логгера: %v", err)
 		return nil, err
 	}
-	log = zapLogger // Инициализируем переменную log
+	log = zapLogger
 	return zapLogger, nil
 }
 
