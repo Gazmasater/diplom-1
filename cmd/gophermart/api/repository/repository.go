@@ -45,9 +45,9 @@ func (ur *UserRepository) Create(user models.User) error {
 	}
 
 	// Добавляем нового пользователя в базу данных
-	_, err = ur.db.Exec("INSERT INTO users (password, user_email) VALUES ($1, $2)", user.Password, user.Email)
+	_, err = ur.db.Exec("INSERT INTO public.users (password, user_email) VALUES ($1, $2)", user.Password, user.Email)
 	if err != nil {
-		return myerr.ErrInsertFailed
+		return err
 	}
 
 	return nil
@@ -91,10 +91,10 @@ func (ur *UserRepository) CreateTableTokens() error {
 	query := `
         CREATE TABLE IF NOT EXISTS tokens (
             id SERIAL PRIMARY KEY,
-            user_email TEXT REFERENCES users(user_email),
+            user_email TEXT UNIQUE, -- Указываем уникальность для user_email
             token TEXT NOT NULL,
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-            expiration_time TIMESTAMPTZ -- Добавляем столбец с временем истечения токена
+            expiration_time TIMESTAMPTZ
         );
     `
 
@@ -152,12 +152,22 @@ func (ur *UserRepository) UpdatePassword(email, newPassword string) error {
 }
 
 func (ur *UserRepository) InsertToken(userEmail string, token string, expirationTime string) error {
-	query := `
+	// Удаление всех строк с указанным user_email
+	deleteQuery := `
+        DELETE FROM tokens
+        WHERE user_email = $1
+    `
+	_, err := ur.db.Exec(deleteQuery, userEmail)
+	if err != nil {
+		return err
+	}
+
+	// Вставка новой записи
+	insertQuery := `
         INSERT INTO tokens (user_email, token, expiration_time)
         VALUES ($1, $2, $3)
     `
-
-	_, err := ur.db.Exec(query, userEmail, token, expirationTime)
+	_, err = ur.db.Exec(insertQuery, userEmail, token, expirationTime)
 	return err
 }
 

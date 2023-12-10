@@ -42,39 +42,3 @@ func (mc *App) TokenAuth(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
-func BadRequestMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Здесь проверяем, соответствует ли запрос определенным обработчикам
-		// Если запрос не соответствует ни одному из обработчиков, устанавливаем статус 400
-		status := http.StatusBadRequest
-
-		// Проверяем метод запроса и путь
-		switch r.Method {
-		case "GET":
-			// Обработчик для метода GET
-			if r.URL.Path == "/specific-get-endpoint" {
-				status = http.StatusOK
-			}
-		case "POST":
-			// Обработчик для метода POST
-			if r.URL.Path == "/specific-post-endpoint" {
-				status = http.StatusOK
-			}
-		// Добавьте другие методы и пути по мере необходимости
-
-		default:
-			// Если запрос не соответствует ожидаемым обработчикам, устанавливаем статус 400
-			status = http.StatusBadRequest
-		}
-
-		// Если статус 400, возвращаем его, иначе передаем обработку следующему обработчику
-		if status == http.StatusBadRequest {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "Неверный запрос\n")
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}

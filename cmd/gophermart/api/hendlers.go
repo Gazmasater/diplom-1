@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
+
 	"strings"
 
 	"net/http"
@@ -166,8 +166,8 @@ func (mc *App) LoadOrders(w http.ResponseWriter, r *http.Request) {
 
 	tokenString := bearerToken[1]
 
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte("Gazmaster358"), nil // Замените на ваш секретный ключ
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
+		return []byte("Gazmaster358"), nil
 	})
 
 	if err != nil || !token.Valid {
@@ -188,10 +188,10 @@ func (mc *App) LoadOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	orderNumber := extractOrderNumberFromString(string(body[:n])) // Извлечение номера заказа из тела запроса
+	orderNumber := (string(body[:n])) // Извлечение номера заказа из тела запроса
 
 	if orderNumber == "" {
-		http.Error(w, "Номер заказа не найден в теле запроса", http.StatusBadRequest)
+		http.Error(w, string(body[:n]), http.StatusBadRequest)
 		return
 	}
 
@@ -210,17 +210,6 @@ func (mc *App) LoadOrders(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Номер заказа не прошел проверку по методу Луна"))
 	}
-}
-
-func extractOrderNumberFromString(input string) string {
-	regexPattern := `\"order\":\s*\"(\d+)\"`
-	re := regexp.MustCompile(regexPattern)
-	matches := re.FindStringSubmatch(input)
-	if len(matches) != 2 {
-		return "" // Возвращаем пустую строку в случае отсутствия совпадения
-	}
-
-	return matches[1] // Возвращаем найденный номер заказа
 }
 
 // Функция для проверки номера по алгоритму Луна
@@ -260,7 +249,7 @@ func (mc *App) GetUserOrdersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orders, err := userRepo.GetOrdersWithUserEmail(userEmail) // Передаем userEmail в функцию GetOrdersWithUserEmail
+	orders, err := userRepo.GetOrdersWithUserEmail(userEmail)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

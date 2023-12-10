@@ -111,9 +111,14 @@ func updateOrdersTable(db *sql.DB) error {
 	var orderNumber string
 	err := db.QueryRow("SELECT order_number FROM orders WHERE status = 'NEW'").Scan(&orderNumber)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			// Если нет статуса "NEW", возвращаем nil
+			return nil
+		}
 		return err
 	}
 
+	println("updateOrdersTable orderNumber ", orderNumber)
 	orderNumber, err = sendPostRequest(orderNumber)
 	if err != nil {
 		return err
