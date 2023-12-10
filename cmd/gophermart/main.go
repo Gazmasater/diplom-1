@@ -43,7 +43,7 @@ func main() {
 	fmt.Println("Connected to the database")
 
 	// Инициализируем конфиг и другие необходимые параметры, если нужно
-	cfg := &config.L_Config{} // ваша конфигурация
+	cfg := &config.LConfig{} // ваша конфигурация
 
 	// Инициализируем приложение с переданным соединением с базой данных
 	app := api.Init(logger, cfg, db)

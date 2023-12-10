@@ -5,16 +5,16 @@ import (
 	"os"
 )
 
-type L_Config struct {
+type LConfig struct {
 	RunAddress           string
 	DatabaseURI          string
 	AccrualSystemAddress string
 	JWTSecretKey         string
 }
 
-var cfg *L_Config
+var cfg *LConfig
 
-func InitConfig() *L_Config {
+func InitConfig() *LConfig {
 	var (
 		runAddress           string
 		databaseURI          string
@@ -49,7 +49,7 @@ func InitConfig() *L_Config {
 
 	flag.Parse()
 
-	cfg = &L_Config{
+	cfg = &LConfig{
 		RunAddress:           runAddress,
 		DatabaseURI:          databaseURI,
 		AccrualSystemAddress: accrualSystemAddress,

@@ -19,7 +19,7 @@ func (app *App) SaveOrderNumber(orderNumber, userEmail string) error {
 		return err
 	}
 	if count > 0 {
-		return myerr.ErrOrderNumberNotUnique // Возвращаем созданную ошибку
+		return myerr.ErrOrderNumberNotUnique
 	}
 
 	// Запрос на вставку номера заказа и адреса электронной почты в базу данных
