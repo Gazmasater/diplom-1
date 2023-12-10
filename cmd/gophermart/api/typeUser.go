@@ -24,7 +24,7 @@ type App struct {
 	AuthCookieDuration  time.Duration
 }
 
-func (a *App) AuthCookieName() string {
+func (mc *App) AuthCookieName() string {
 	return "Gazmaster358"
 }
 
