@@ -105,7 +105,7 @@ func (ur *UserRepository) CreateTableTokens() error {
 // В UserRepository добавь этот метод
 
 func (ur *UserRepository) GetUserByEmail(email string, password string) (*models.User, error) {
-	fmt.Println("Trying to enter GetUserByEmail function") // Добавьте эту строку
+	fmt.Println("Trying to enter GetUserByEmail function")
 
 	user := &models.User{
 		Email:    email,
