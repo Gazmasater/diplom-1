@@ -162,7 +162,6 @@ func (ur *UserRepository) InsertToken(userEmail string, token string, expiration
 		return err
 	}
 
-	// Вставка новой записи
 	insertQuery := `
         INSERT INTO tokens (user_email, token, expiration_time)
         VALUES ($1, $2, $3)
