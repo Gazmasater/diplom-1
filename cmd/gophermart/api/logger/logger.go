@@ -5,7 +5,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var log *zap.Logger // Объявляем log как глобальную переменную в пакете
+var log *zap.Logger
 
 func InitLogger() (*zap.Logger, error) {
 	config := zap.NewProductionConfig()
