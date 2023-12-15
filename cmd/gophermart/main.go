@@ -43,7 +43,7 @@ func main() {
 	fmt.Println("Connected to the database")
 
 	// Инициализируем конфиг и другие необходимые параметры, если нужно
-	cfg := &config.LConfig{} // ваша конфигурация
+	cfg := config.InitConfig()
 
 	// Инициализируем приложение с переданным соединением с базой данных
 	app := api.Init(logger, cfg, db)
@@ -77,14 +77,17 @@ func main() {
 			}
 		}
 	}()
-
+	var address string
 	go func() {
-		if err := http.ListenAndServe(":8080", router); err != nil {
+		address = cfg.RunAddress // Используем адрес из конфига
+
+		if err := http.ListenAndServe(address, router); err != nil {
 			logger.Error("Ошибка запуска сервера", zap.Error(err))
 		}
+
+		logger.Info(fmt.Sprintf("Сервер успешно запущен на %s", address))
 	}()
 
-	logger.Info("Сервер успешно запущен на порту 8080")
 	select {}
 
 }
