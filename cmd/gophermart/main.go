@@ -19,7 +19,7 @@ import (
 func main() {
 
 	var wg sync.WaitGroup
-	wg.Add(1) // Добавление в WaitGroup
+	wg.Add(2) // Добавление в WaitGroup
 
 	// Инициализация логгера
 	logger, err := logger.InitLogger()
@@ -77,18 +77,16 @@ func main() {
 			}
 		}
 	}()
-	var address string
-	go func() {
-		address = cfg.RunAddress // Используем адрес из конфига
 
-		if err := http.ListenAndServe(address, router); err != nil {
+	go func(addr string) {
+		if err := http.ListenAndServe(addr, router); err != nil {
 			logger.Error("Ошибка запуска сервера", zap.Error(err))
 		}
 
-		logger.Info(fmt.Sprintf("Сервер успешно запущен на %s", address))
-	}()
+		logger.Info(fmt.Sprintf("Сервер успешно запущен на %s", addr))
+	}(cfg.RunAddress)
 
-	select {}
+	wg.Wait()
 
 }
 
@@ -128,7 +126,7 @@ func updateOrdersTable(db *sql.DB, cfg *config.LConfig) error {
 	}
 
 	// Формирование GET запроса для получения статуса
-	url := fmt.Sprintf("http://localhost:8081/api/orders/%s", orderNumber)
+	url := fmt.Sprintf("%s/%s", cfg.AccrualSystemAddress, orderNumber)
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
