@@ -22,7 +22,7 @@ func (mc *App) Route() *chi.Mux {
 	// Middleware для аутентификации пользователя
 	authMiddleware := mc.TokenAuth // TokenAuth - middleware
 
-	// Маршруты, требующие аутентификации через токен
+	// Маршруты, требующие аутентификации через токен....
 	r.Route("/api/user", func(r chi.Router) {
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware)
