@@ -35,7 +35,8 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	println("user", user.Email, user.Password) // Используем user.Email и user.Password
+
+	fmt.Println("user", user.Email, user.Password) // Используем user.Email и user.Password
 
 	existingUser, _ := mc.UserRepository.GetUserByEmail(user.Email, user.Password)
 
@@ -86,11 +87,13 @@ func (mc *App) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	authResponseRecorder := httptest.NewRecorder()
 	mc.AuthenticateUserHandler(authResponseRecorder, authRequest)
 
-	if authResponseRecorder.Code != http.StatusOK {
-		// Ошибка аутентификации
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Ошибка аутентификации: код ответа %d\n", authResponseRecorder.Code)
-		log.Error("Ошибка аутентификации", zap.Int("statusCode", authResponseRecorder.Code))
+	if authResponseRecorder.Code != http.StatusOK &&
+		authResponseRecorder.Code != http.StatusConflict &&
+		authResponseRecorder.Code != http.StatusInternalServerError {
+		// Если код ответа не соответствует ожидаемым, вернуть Bad Request (400)
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Непредвиденная ошибка: код ответа %d\n", authResponseRecorder.Code)
+		log.Error("Непредвиденная ошибка", zap.Int("statusCode", authResponseRecorder.Code))
 		return
 	}
 
