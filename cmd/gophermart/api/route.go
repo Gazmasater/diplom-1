@@ -39,7 +39,6 @@ func (mc *App) Route() *chi.Mux {
 	r.Post("/api/user/register", mc.RegisterUserHandler)
 	r.Post("/api/user/login", mc.AuthenticateUserHandler)
 
-	// Перехватываем все остальные запросы и устанавливаем код 400 для неправильных путей
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "Неправильный путь запроса: %s\n", r.URL.Path)
