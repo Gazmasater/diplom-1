@@ -71,7 +71,7 @@ func main() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			err := updateOrdersTable(db)
+			err := updateOrdersTable(db, cfg)
 			if err != nil {
 				logger.Error("Ошибка при обновлении таблицы orders", zap.Error(err))
 			}
@@ -92,8 +92,8 @@ func main() {
 
 }
 
-func sendPostRequest(orderNumber string) (string, error) {
-	url := "http://localhost:8081/api/orders"
+func sendPostRequest(orderNumber string, accrualSystemAddress string) (string, error) {
+	url := fmt.Sprintf("http://%s/api/orders", accrualSystemAddress)
 	requestBody := []byte(fmt.Sprintf(`{"order": "%s"}`, orderNumber))
 
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
@@ -109,7 +109,7 @@ func sendPostRequest(orderNumber string) (string, error) {
 	return orderNumber, nil
 }
 
-func updateOrdersTable(db *sql.DB) error {
+func updateOrdersTable(db *sql.DB, cfg *config.LConfig) error {
 	// Получение номера заказа из базы данных
 	var orderNumber string
 	err := db.QueryRow("SELECT order_number FROM orders WHERE status = 'NEW'").Scan(&orderNumber)
@@ -120,9 +120,9 @@ func updateOrdersTable(db *sql.DB) error {
 		}
 		return err
 	}
-
+	accrualSystemAddress := cfg.AccrualSystemAddress
 	println("updateOrdersTable orderNumber ", orderNumber)
-	orderNumber, err = sendPostRequest(orderNumber)
+	orderNumber, err = sendPostRequest(orderNumber, accrualSystemAddress)
 	if err != nil {
 		return err
 	}
