@@ -35,7 +35,7 @@ func (mc *App) Route() *chi.Mux {
 		})
 	})
 
-	// Маршруты без аутентификации
+	// Маршруты без аутентификац
 	r.Post("/api/user/register", mc.RegisterUserHandler)
 	r.Post("/api/user/login", mc.AuthenticateUserHandler)
 
