@@ -22,7 +22,7 @@ func InitConfig() *LConfig {
 		jwtSecretKey         string
 	)
 
-	flag.StringVar(&runAddress, "a", "localhost:8080", "Адрес и порт запуска сервиса")
+	flag.StringVar(&runAddress, "a", "localhost:8081", "Адрес и порт запуска сервиса")
 	flag.StringVar(&databaseURI, "d", "postgres://lew:qwert@localhost:5432/diplom?sslmode=disable", "Адрес подключения к базе данных")
 	flag.StringVar(&accrualSystemAddress, "r", "localhost:1488", "Адрес системы расчёта начислений")
 	flag.StringVar(&jwtSecretKey, "jwt", "Gazmaster358", "Секретный ключ JWT")
