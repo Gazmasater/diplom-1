@@ -1,3 +1,159 @@
 package main
 
-func main() {}
+import (
+	"bytes"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+
+	"diplom.com/cmd/gophermart/api"
+	"diplom.com/cmd/gophermart/api/logger"
+	"diplom.com/cmd/gophermart/config"
+	"go.uber.org/zap"
+)
+
+func main() {
+
+	var wg sync.WaitGroup
+	wg.Add(2) // Добавление в WaitGroup
+
+	// Инициализация логгера
+	logger, err := logger.InitLogger()
+	if err != nil {
+		// обработка ошибки инициализации логгера
+		panic(err)
+	}
+
+	// Устанавливаем соединение с базой данных PostgreSQL
+	db, err := sql.Open("postgres", "user=lew dbname=diplom password=qwert host=localhost sslmode=disable")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	// Проверяем соединение с базой данных
+	err = db.Ping()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Connected to the database")
+
+	// Инициализируем конфиг и другие необходимые параметры, если нужно
+	cfg := config.InitConfig()
+
+	// Инициализируем приложение с переданным соединением с базой данных
+	app := api.Init(logger, cfg, db)
+
+	if err := app.UserRepository.CreateTableUsers(); err != nil {
+		logger.Error("Ошибка создания таблицы пользователей", zap.Error(err))
+		// Обработка ошибки создания таблицы пользователей
+	}
+
+	if err := app.UserRepository.CreateTableOrders(); err != nil {
+		logger.Error("Ошибка создания таблицы пользователей", zap.Error(err))
+		// Обработка ошибки создания таблицы пользователей
+	}
+
+	if err := app.UserRepository.CreateTableTokens(); err != nil {
+		logger.Error("Ошибка создания таблицы пользователей", zap.Error(err))
+		// Обработка ошибки создания таблицы пользователей
+	}
+
+	router := app.Route()
+
+	go func() {
+		defer wg.Done()
+
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			err := updateOrdersTable(db, cfg)
+			if err != nil {
+				logger.Error("Ошибка при обновлении таблицы orders", zap.Error(err))
+			}
+		}
+	}()
+
+	go func(addr string) {
+		if err := http.ListenAndServe(addr, router); err != nil {
+			logger.Error("Ошибка запуска сервера", zap.Error(err))
+		}
+
+		logger.Info(fmt.Sprintf("Сервер успешно запущен на %s", addr))
+	}(cfg.RunAddress)
+
+	wg.Wait()
+
+}
+
+func sendPostRequest(orderNumber string, accrualSystemAddress string) (string, error) {
+	url := fmt.Sprintf("http://%s/api/orders", accrualSystemAddress)
+	requestBody := []byte(fmt.Sprintf(`{"order": "%s"}`, orderNumber))
+
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusAccepted {
+		return "", fmt.Errorf("неверный статус от сервера: %d", resp.StatusCode)
+	}
+
+	return orderNumber, nil
+}
+
+func updateOrdersTable(db *sql.DB, cfg *config.LConfig) error {
+	// Получение номера заказа из базы данных
+	var orderNumber string
+	err := db.QueryRow("SELECT order_number FROM orders WHERE status = 'NEW'").Scan(&orderNumber)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Если нет статуса "NEW", возвращаем nil
+			return nil
+		}
+		return err
+	}
+	accrualSystemAddress := cfg.AccrualSystemAddress
+	println("updateOrdersTable orderNumber ", orderNumber)
+	orderNumber, err = sendPostRequest(orderNumber, accrualSystemAddress)
+	if err != nil {
+		return err
+	}
+
+	// Формирование GET запроса для получения статуса
+	url := fmt.Sprintf("%s/%s", cfg.AccrualSystemAddress, orderNumber)
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("неверный статус от сервера: %d", resp.StatusCode)
+	}
+
+	// Декодирование ответа и получение статуса и accrual
+	var responseBody struct {
+		Status  string `json:"status"`
+		Accrual int    `json:"accrual"` // или другой тип данных accrual
+		// Добавьте другие поля, если они есть в ответе
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&responseBody)
+	if err != nil {
+		return err
+	}
+
+	// Обновление базы данных на основе полученных данных
+	_, err = db.Exec("UPDATE orders SET status = $1, accrual = $2 WHERE order_number = $3", responseBody.Status, responseBody.Accrual, orderNumber)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
